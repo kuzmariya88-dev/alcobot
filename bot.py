@@ -1,10 +1,10 @@
 import logging
 import os
-import json
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
 from dotenv import load_dotenv
+from calculator import calculate_alcohol, format_result
 
 load_dotenv()
 
@@ -19,9 +19,11 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не установлен!")
 
 app = Flask(__name__)
-application = None
+application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 user_sessions = {}
+
+# ========== КНОПКИ ==========
 
 def get_event_buttons():
     return InlineKeyboardMarkup([
@@ -34,18 +36,57 @@ def get_event_buttons():
         [InlineKeyboardButton("📌 Другое", callback_data="evt_другое")]
     ])
 
+def get_format_buttons():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍽️ Банкет", callback_data="fmt_банкет")],
+        [InlineKeyboardButton("🥂 Фуршет", callback_data="fmt_фуршет")],
+        [InlineKeyboardButton("🎪 Комбинированный", callback_data="fmt_комбинированный")]
+    ])
+
+def get_duration_buttons():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("2-3 часа", callback_data="dur_2-3"),
+         InlineKeyboardButton("3-4 часа", callback_data="dur_3-4")],
+        [InlineKeyboardButton("4-5 часов", callback_data="dur_4-5"),
+         InlineKeyboardButton("5+ часов", callback_data="dur_5+")]
+    ])
+
+def get_drinks_buttons():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🥂 Шампанское", callback_data="drk_champagne")],
+        [InlineKeyboardButton("🍷 Вино белое", callback_data="drk_wine_white")],
+        [InlineKeyboardButton("🍷 Вино красное", callback_data="drk_wine_red")],
+        [InlineKeyboardButton("🥃 Виски", callback_data="drk_whiskey")],
+        [InlineKeyboardButton("🥃 Коньяк", callback_data="drk_cognac")],
+        [InlineKeyboardButton("✅ Готово", callback_data="drk_done")]
+    ])
+
+def get_price_buttons():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💳 Стандарт (500₽)", callback_data="prc_стандарт")],
+        [InlineKeyboardButton("⭐ Премиум (1100₽)", callback_data="prc_премиум")],
+        [InlineKeyboardButton("👑 Люкс (2250₽)", callback_data="prc_люкс")],
+        [InlineKeyboardButton("💎 Супер Люкс (4000₽)", callback_data="prc_супер_люкс")]
+    ])
+
+# ========== WEBHOOK ОБРАБОТЧИК ==========
+
 @app.route('/webhook', methods=['POST'])
 def webhook_handler():
     try:
         data = request.get_json()
         update = Update.de_json(data, application.bot)
-        
+
         user_id = None
+
+        # Обработка текстовых сообщений
         if update.message:
             user_id = update.message.from_user.id
-            logger.info(f"Message from {user_id}: {update.message.text}")
-            
-            if update.message.text == '/start':
+            text = update.message.text or ""
+            logger.info(f"📨 Message from {user_id}: {text}")
+
+            # /start команда
+            if text == '/start':
                 user_sessions[user_id] = {}
                 application.bot.send_message(
                     chat_id=user_id,
@@ -53,35 +94,28 @@ def webhook_handler():
                     parse_mode='HTML',
                     reply_markup=get_event_buttons()
                 )
-                logger.info(f"Sent start message to {user_id}")
-        
-        elif update.callback_query:
-            user_id = update.callback_query.from_user.id
-            logger.info(f"Callback from {user_id}: {update.callback_query.data}")
-        
-        return 'ok', 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}", exc_info=True)
-        return 'error', 500
+                logger.info(f"✅ Start sent to {user_id}")
+                return 'ok', 200
 
-async def set_webhook():
-    try:
-        webhook_url = f"{TELEGRAM_WEBHOOK_URL}/webhook"
-        await application.bot.set_webhook(webhook_url)
-        logger.info(f"✅ Webhook set to {webhook_url}")
-    except Exception as e:
-        logger.error(f"❌ Failed to set webhook: {e}")
+            # Обработка числовых ответов (количество гостей)
+            if user_id in user_sessions:
+                try:
+                    num = int(text)
 
-if __name__ == '__main__':
-    global application
-    
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    import asyncio
-    try:
-        asyncio.run(set_webhook())
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
-    
-    logger.info("🚀 Bot started!")
-    app.run(host='0.0.0.0', port=FLASK_PORT, debug=False)
+                    # Первое число - общее количество гостей
+                    if 'guests_total' not in user_sessions[user_id]:
+                        user_sessions[user_id]['guests_total'] = num
+                        application.bot.send_message(
+                            chat_id=user_id,
+                            text=f"✅ Гостей: {num}\n\nВведите количество мужчин:"
+                        )
+                    # Второе число - количество мужчин
+                    else:
+                        user_sessions[user_id]['guests_male'] = num
+                        user_sessions[user_id]['drinks'] = []
+                        application.bot.send_message(
+                            chat_id=user_id,
+                            text=f"✅ Мужчин: {num}\n\nВыберите напитки (можно выбрать несколько):",
+                            reply_markup=get_drinks_buttons()
+                        )
+                except ValueError:
