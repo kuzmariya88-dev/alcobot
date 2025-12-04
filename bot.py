@@ -45,20 +45,19 @@ def get_duration_buttons():
 
 def get_drinks_buttons():
     return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🍷 Белое сухое", callback_data="drk_dry_white")],
+        [InlineKeyboardButton("🍷 Белое полусладкое", callback_data="drk_semi_sweet_white")],
+        [InlineKeyboardButton("🍷 Белое полусухое", callback_data="drk_semi_dry_white")],
+        [InlineKeyboardButton("🍷 Красное сухое", callback_data="drk_dry_red")],
+        [InlineKeyboardButton("🍷 Красное полусладкое", callback_data="drk_semi_sweet_red")],
+        [InlineKeyboardButton("🍷 Красное полусухое", callback_data="drk_semi_dry_red")],
         [InlineKeyboardButton("🥂 Шампанское", callback_data="drk_champagne")],
-        [InlineKeyboardButton("🍷 Вино белое", callback_data="drk_wine_white")],
-        [InlineKeyboardButton("🍷 Вино красное", callback_data="drk_wine_red")],
+        [InlineKeyboardButton("🥃 Водка", callback_data="drk_vodka")],
         [InlineKeyboardButton("🥃 Виски", callback_data="drk_whiskey")],
+        [InlineKeyboardButton("🥃 Джин", callback_data="drk_gin")],
+        [InlineKeyboardButton("🌵 Текила", callback_data="drk_tequila")],
         [InlineKeyboardButton("🥃 Коньяк", callback_data="drk_cognac")],
         [InlineKeyboardButton("✅ Готово", callback_data="drk_done")]
-    ])
-
-def get_price_buttons():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💳 Стандарт (500₽)", callback_data="prc_стандарт")],
-        [InlineKeyboardButton("⭐ Премиум (1100₽)", callback_data="prc_премиум")],
-        [InlineKeyboardButton("👑 Люкс (2250₽)", callback_data="prc_люкс")],
-        [InlineKeyboardButton("💎 Супер Люкс (4000₽)", callback_data="prc_супер_люкс")]
     ])
 
 # ========== ОБРАБОТЧИКИ ==========
@@ -140,11 +139,20 @@ async def handle_callback(update: Update, context):
                 await query.answer("❌ Выберите хотя бы один напиток!", show_alert=True)
                 return
             
-            await query.edit_message_text(
-                text="💰 Выберите ценовую категорию:",
-                reply_markup=get_price_buttons(),
-                parse_mode='HTML'
-            )
+            try:
+                result = calculate_alcohol(user_sessions[user_id])
+                message_text = format_result(result)
+                
+                await query.edit_message_text(
+                    text=message_text,
+                    parse_mode='HTML'
+                )
+                
+                await query.message.reply_text("🔄 Нажмите /start для нового расчета")
+                logger.info(f"✅ Result sent to {user_id}")
+            except Exception as e:
+                logger.error(f"Error calculating for {user_id}: {e}")
+                await query.message.reply_text("❌ Ошибка при расчете. Попробуйте еще раз: /start")
         else:
             if 'drinks' not in user_sessions[user_id]:
                 user_sessions[user_id]['drinks'] = []
@@ -152,31 +160,28 @@ async def handle_callback(update: Update, context):
             if drink not in user_sessions[user_id]['drinks']:
                 user_sessions[user_id]['drinks'].append(drink)
             
-            drinks_list = ", ".join(user_sessions[user_id]['drinks'])
+            # Красивое имя напитка для отображения
+            drink_names = {
+                'dry_white': '🍷 Белое сухое',
+                'semi_sweet_white': '🍷 Белое полусладкое',
+                'semi_dry_white': '🍷 Белое полусухое',
+                'dry_red': '🍷 Красное сухое',
+                'semi_sweet_red': '🍷 Красное полусладкое',
+                'semi_dry_red': '🍷 Красное полусухое',
+                'champagne': '🥂 Шампанское',
+                'vodka': '🥃 Водка',
+                'whiskey': '🥃 Виски',
+                'gin': '🥃 Джин',
+                'tequila': '🌵 Текила',
+                'cognac': '🥃 Коньяк',
+            }
+            
+            drinks_list = ", ".join([drink_names.get(d, d) for d in user_sessions[user_id]['drinks']])
             await query.edit_message_text(
-                text=f"✅ Выбранные напитки: {drinks_list}\n\nДобавьте еще или нажмите 'Готово':",
+                text=f"✅ Выбранные напитки:\n{drinks_list}\n\nДобавьте еще или нажмите 'Готово':",
                 reply_markup=get_drinks_buttons(),
                 parse_mode='HTML'
             )
-    
-    elif data_value.startswith('prc_'):
-        price_category = data_value.replace('prc_', '')
-        user_sessions[user_id]['price_category'] = price_category
-        
-        try:
-            result = calculate_alcohol(user_sessions[user_id])
-            message_text = format_result(result)
-            
-            await query.edit_message_text(
-                text=message_text,
-                parse_mode='HTML'
-            )
-            
-            await query.message.reply_text("🔄 Нажмите /start для нового расчета")
-            logger.info(f"✅ Result sent to {user_id}")
-        except Exception as e:
-            logger.error(f"Error calculating for {user_id}: {e}")
-            await query.message.reply_text("❌ Ошибка при расчете. Попробуйте еще раз: /start")
 
 # ========== MAIN ==========
 
