@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application
@@ -85,12 +86,12 @@ def webhook_handler():
             # /start команда
             if update.message.text == '/start':
                 user_sessions[user_id] = {'step': 'event_type'}
-                application.bot.send_message(
+                asyncio.create_task(application.bot.send_message(
                     chat_id=user_id,
                     text="🍾 <b>Добро пожаловать в Алкоголь.Калькулятор!</b>\n\nВыберите тип события:",
                     parse_mode='HTML',
                     reply_markup=get_event_buttons()
-                )
+                ))
                 logger.info(f"✅ Start sent to {user_id}")
             
             # Обработка числовых ответов (количество гостей)
@@ -101,24 +102,24 @@ def webhook_handler():
                     # Первое число - общее количество гостей
                     if 'guests_total' not in user_sessions[user_id]:
                         user_sessions[user_id]['guests_total'] = num
-                        application.bot.send_message(
+                        asyncio.create_task(application.bot.send_message(
                             chat_id=user_id,
                             text=f"✅ Гостей: {num}\n\nВведите количество мужчин:"
-                        )
+                        ))
                     # Второе число - количество мужчин
                     else:
                         user_sessions[user_id]['guests_male'] = num
                         user_sessions[user_id]['drinks'] = []
-                        application.bot.send_message(
+                        asyncio.create_task(application.bot.send_message(
                             chat_id=user_id,
                             text=f"✅ Мужчин: {num}\n\nВыберите напитки (можно выбрать несколько):",
                             reply_markup=get_drinks_buttons()
-                        )
+                        ))
                 except ValueError:
-                    application.bot.send_message(
+                    asyncio.create_task(application.bot.send_message(
                         chat_id=user_id,
                         text="❌ Пожалуйста, введите число!"
-                    )
+                    ))
         
         # Обработка кнопок (callback_query)
         elif update.callback_query:
@@ -133,36 +134,36 @@ def webhook_handler():
             if data_value.startswith('evt_'):
                 event_type = data_value.replace('evt_', '')
                 user_sessions[user_id]['event_type'] = event_type
-                application.bot.edit_message_text(
+                asyncio.create_task(application.bot.edit_message_text(
                     chat_id=user_id,
                     message_id=update.callback_query.message.message_id,
                     text=f"✅ Выбрано: {event_type}\n\nВыберите формат события:",
                     reply_markup=get_format_buttons(),
                     parse_mode='HTML'
-                )
+                ))
             
             # Выбор формата
             elif data_value.startswith('fmt_'):
                 event_format = data_value.replace('fmt_', '')
                 user_sessions[user_id]['event_format'] = event_format
-                application.bot.edit_message_text(
+                asyncio.create_task(application.bot.edit_message_text(
                     chat_id=user_id,
                     message_id=update.callback_query.message.message_id,
                     text=f"✅ Выбрано: {event_format}\n\nВыберите длительность:",
                     reply_markup=get_duration_buttons(),
                     parse_mode='HTML'
-                )
+                ))
             
             # Выбор длительности
             elif data_value.startswith('dur_'):
                 duration = data_value.replace('dur_', '')
                 user_sessions[user_id]['duration'] = duration
-                application.bot.edit_message_text(
+                asyncio.create_task(application.bot.edit_message_text(
                     chat_id=user_id,
                     message_id=update.callback_query.message.message_id,
                     text=f"✅ Длительность: {duration}\n\n👥 Введите общее количество гостей:",
                     parse_mode='HTML'
-                )
+                ))
             
             # Выбор напитков
             elif data_value.startswith('drk_'):
@@ -170,20 +171,20 @@ def webhook_handler():
                 
                 if drink == 'done':
                     if 'drinks' not in user_sessions[user_id] or not user_sessions[user_id]['drinks']:
-                        application.bot.answer_callback_query(
+                        asyncio.create_task(application.bot.answer_callback_query(
                             callback_query_id=update.callback_query.id,
                             text="❌ Выберите хотя бы один напиток!",
                             show_alert=True
-                        )
+                        ))
                         return 'ok', 200
                     
-                    application.bot.edit_message_text(
+                    asyncio.create_task(application.bot.edit_message_text(
                         chat_id=user_id,
                         message_id=update.callback_query.message.message_id,
                         text="💰 Выберите ценовую категорию:",
                         reply_markup=get_price_buttons(),
                         parse_mode='HTML'
-                    )
+                    ))
                 else:
                     if 'drinks' not in user_sessions[user_id]:
                         user_sessions[user_id]['drinks'] = []
@@ -192,13 +193,13 @@ def webhook_handler():
                         user_sessions[user_id]['drinks'].append(drink)
                     
                     drinks_list = ", ".join(user_sessions[user_id]['drinks'])
-                    application.bot.edit_message_text(
+                    asyncio.create_task(application.bot.edit_message_text(
                         chat_id=user_id,
                         message_id=update.callback_query.message.message_id,
                         text=f"✅ Выбранные напитки: {drinks_list}\n\nДобавьте еще или нажмите 'Готово':",
                         reply_markup=get_drinks_buttons(),
                         parse_mode='HTML'
-                    )
+                    ))
             
             # Выбор ценовой категории
             elif data_value.startswith('prc_'):
@@ -209,24 +210,24 @@ def webhook_handler():
                     result = calculate_alcohol(user_sessions[user_id])
                     message_text = format_result(result)
                     
-                    application.bot.edit_message_text(
+                    asyncio.create_task(application.bot.edit_message_text(
                         chat_id=user_id,
                         message_id=update.callback_query.message.message_id,
                         text=message_text,
                         parse_mode='HTML'
-                    )
+                    ))
                     
-                    application.bot.send_message(
+                    asyncio.create_task(application.bot.send_message(
                         chat_id=user_id,
                         text="🔄 Нажмите /start для нового расчета"
-                    )
+                    ))
                     logger.info(f"✅ Result sent to {user_id}")
                 except Exception as e:
                     logger.error(f"Error calculating for {user_id}: {e}")
-                    application.bot.send_message(
+                    asyncio.create_task(application.bot.send_message(
                         chat_id=user_id,
                         text="❌ Ошибка при расчете. Попробуйте еще раз: /start"
-                    )
+                    ))
         
         return 'ok', 200
     
@@ -247,12 +248,10 @@ async def set_webhook():
 # ========== MAIN ==========
 
 if __name__ == '__main__':
-    import asyncio
-    
     try:
         asyncio.run(set_webhook())
     except Exception as e:
         logger.error(f"❌ Startup error: {e}")
     
     logger.info("🚀 Bot started!")
-    app.run(host='0.0.0.0', port=FLASK_PORT, debug=False)
+    app.run(host='0.0.0.0', port=FLASK_PORT, debug=False, threaded=True)
