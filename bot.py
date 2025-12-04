@@ -17,8 +17,6 @@ if not TELEGRAM_BOT_TOKEN:
 
 user_sessions = {}
 
-# ========== КНОПКИ ==========
-
 def get_event_buttons():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("🎂 День рождения", callback_data="evt_день_рождения")],
@@ -60,8 +58,6 @@ def get_drinks_buttons():
         [InlineKeyboardButton("✅ Готово", callback_data="drk_done")]
     ])
 
-# ========== ОБРАБОТЧИКИ ==========
-
 async def start(update: Update, context):
     user_id = update.message.from_user.id
     user_sessions[user_id] = {'step': 'event_type'}
@@ -81,7 +77,6 @@ async def handle_message(update: Update, context):
     
     try:
         num = int(text)
-        
         if 'guests_total' not in user_sessions[user_id]:
             user_sessions[user_id]['guests_total'] = num
             await update.message.reply_text(f"✅ Гостей: {num}\n\nВведите количество мужчин:")
@@ -113,7 +108,6 @@ async def handle_callback(update: Update, context):
             reply_markup=get_format_buttons(),
             parse_mode='HTML'
         )
-    
     elif data_value.startswith('fmt_'):
         event_format = data_value.replace('fmt_', '')
         user_sessions[user_id]['event_format'] = event_format
@@ -122,7 +116,6 @@ async def handle_callback(update: Update, context):
             reply_markup=get_duration_buttons(),
             parse_mode='HTML'
         )
-    
     elif data_value.startswith('dur_'):
         duration = data_value.replace('dur_', '')
         user_sessions[user_id]['duration'] = duration
@@ -130,7 +123,6 @@ async def handle_callback(update: Update, context):
             text=f"✅ Длительность: {duration}\n\n👥 Введите общее количество гостей:",
             parse_mode='HTML'
         )
-    
     elif data_value.startswith('drk_'):
         drink = data_value.replace('drk_', '')
         
@@ -142,25 +134,18 @@ async def handle_callback(update: Update, context):
             try:
                 result = calculate_alcohol(user_sessions[user_id])
                 message_text = format_result(result)
-                
-                await query.edit_message_text(
-                    text=message_text,
-                    parse_mode='HTML'
-                )
-                
+                await query.edit_message_text(text=message_text, parse_mode='HTML')
                 await query.message.reply_text("🔄 Нажмите /start для нового расчета")
                 logger.info(f"✅ Result sent to {user_id}")
             except Exception as e:
-                logger.error(f"Error calculating for {user_id}: {e}")
+                logger.error(f"Error: {e}")
                 await query.message.reply_text("❌ Ошибка при расчете. Попробуйте еще раз: /start")
         else:
             if 'drinks' not in user_sessions[user_id]:
                 user_sessions[user_id]['drinks'] = []
-            
             if drink not in user_sessions[user_id]['drinks']:
                 user_sessions[user_id]['drinks'].append(drink)
             
-            # Красивое имя напитка для отображения
             drink_names = {
                 'dry_white': '🍷 Белое сухое',
                 'semi_sweet_white': '🍷 Белое полусладкое',
@@ -183,14 +168,10 @@ async def handle_callback(update: Update, context):
                 parse_mode='HTML'
             )
 
-# ========== MAIN ==========
-
 if __name__ == '__main__':
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
-    
     logger.info("🚀 Bot started with polling!")
     app.run_polling()
