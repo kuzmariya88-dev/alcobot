@@ -180,7 +180,7 @@ async def handle_callback(update: Update, context):
 
 # ========== MAIN ==========
 
-async def main():
+if __name__ == '__main__':
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
     app.add_handler(CommandHandler("start", start))
@@ -188,8 +188,4 @@ async def main():
     app.add_handler(CallbackQueryHandler(handle_callback))
     
     logger.info("🚀 Bot started with polling!")
-    await app.run_polling()
-
-if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    app.run_polling()
