@@ -1,97 +1,111 @@
-def calculate_alcohol(session):
-    """Расчет алкоголя для события"""
-    
-    guests_total = session.get('guests_total', 0)
-    guests_male = session.get('guests_male', 0)
+def calculate_alcohol(session_data):
+    """
+    Расчет количества алкоголя по типам напитков
+    """
+    guests_total = session_data.get('guests_total', 0)
+    guests_male = session_data.get('guests_male', 0)
     guests_female = guests_total - guests_male
+    duration = session_data.get('duration', '3-4')
+    drinks = session_data.get('drinks', [])
     
-    duration = session.get('duration', '2-3')
-    drinks = session.get('drinks', [])
-    price_category = session.get('price_category', 'стандарт')
-    
-    # Норма напитков в мл на человека в час
-    drink_norms = {
-        'drk_champagne': 100,
-        'drk_wine_white': 100,
-        'drk_wine_red': 100,
-        'drk_whiskey': 40,
-        'drk_cognac': 40
+    # Стандартное потребление (мл на человека за час)
+    consumption_per_hour = {
+        'male': 60,
+        'female': 40
     }
     
-    # Средняя длительность
+    # Длительность события в часах (берем среднее)
     duration_map = {
         '2-3': 2.5,
         '3-4': 3.5,
         '4-5': 4.5,
-        '5+': 5.5
+        '5+': 6
+    }
+    hours = duration_map.get(duration, 3.5)
+    
+    # Крепость напитков (% алкоголя) и объём бутылки (мл)
+    drink_specs = {
+        'dry_white': {'name': 'Белое сухое', 'abv': 12, 'bottle_ml': 750},
+        'semi_sweet_white': {'name': 'Белое полусладкое', 'abv': 12, 'bottle_ml': 750},
+        'semi_dry_white': {'name': 'Белое полусухое', 'abv': 12, 'bottle_ml': 750},
+        'dry_red': {'name': 'Красное сухое', 'abv': 13, 'bottle_ml': 750},
+        'semi_sweet_red': {'name': 'Красное полусладкое', 'abv': 13, 'bottle_ml': 750},
+        'semi_dry_red': {'name': 'Красное полусухое', 'abv': 12, 'bottle_ml': 750},
+        'champagne': {'name': 'Шампанское', 'abv': 12, 'bottle_ml': 750},
+        'vodka': {'name': 'Водка', 'abv': 40, 'bottle_ml': 750},
+        'whiskey': {'name': 'Виски', 'abv': 40, 'bottle_ml': 750},
+        'gin': {'name': 'Джин', 'abv': 40, 'bottle_ml': 750},
+        'tequila': {'name': 'Текила', 'abv': 38, 'bottle_ml': 750},
+        'cognac': {'name': 'Коньяк', 'abv': 40, 'bottle_ml': 750},
     }
     
-    hours = duration_map.get(duration, 3)
+    # Расчет общего потребления алкоголя (в мл чистого спирта)
+    male_consumption_ml = guests_male * consumption_per_hour['male'] * hours
+    female_consumption_ml = guests_female * consumption_per_hour['female'] * hours
+    total_alcohol_ml = male_consumption_ml + female_consumption_ml
     
-    # Расчет общего количества
-    total_ml = 0
-    for drink in drinks:
-        norm = drink_norms.get(drink, 80)
-        # Мужчины пьют больше женщин
-        male_consumption = guests_male * norm * hours * 1.2
-        female_consumption = guests_female * norm * hours * 0.8
-        total_ml += male_consumption + female_consumption
+    # Распределение по типам напитков поровну
+    num_drink_types = len(drinks)
+    if num_drink_types == 0:
+        return {'error': 'Не выбраны напитки'}
     
-    # Стоимость
-    price_per_liter = {
-        'стандарт': 500,
-        'премиум': 1100,
-        'люкс': 2250,
-        'супер_люкс': 4000
-    }
+    alcohol_per_drink = total_alcohol_ml / num_drink_types
     
-    price = price_per_liter.get(price_category, 500)
-    total_cost = (total_ml / 1000) * price
-    
-    # Количество бутылок (стандартная 750мл)
-    bottles = total_ml / 750
-    
-    return {
-        'total_ml': int(total_ml),
-        'liters': round(total_ml / 1000, 2),
-        'bottles': round(bottles, 1),
-        'total_cost': int(total_cost),
-        'price_per_bottle': price,
-        'drinks': drinks,
+    result = {
         'guests_total': guests_total,
-        'duration': duration
+        'guests_male': guests_male,
+        'guests_female': guests_female,
+        'duration': duration,
+        'total_alcohol_ml': total_alcohol_ml,
+        'drinks_breakdown': []
     }
+    
+    total_bottles = 0
+    
+    for drink_code in drinks:
+        if drink_code not in drink_specs:
+            continue
+        
+        spec = drink_specs[drink_code]
+        # Сколько мл чистого спирта нужно этого напитка
+        alcohol_needed = alcohol_per_drink
+        # Сколько мл напитка нужно (учитываем крепость)
+        volume_needed_ml = (alcohol_needed / spec['abv']) * 100
+        # Сколько бутылок
+        bottles_needed = volume_needed_ml / spec['bottle_ml']
+        
+        result['drinks_breakdown'].append({
+            'name': spec['name'],
+            'bottles': round(bottles_needed, 1),
+            'bottles_int': int(bottles_needed) + (1 if bottles_needed % 1 > 0 else 0)
+        })
+        
+        total_bottles += bottles_needed
+    
+    result['total_bottles'] = total_bottles
+    result['total_bottles_int'] = int(total_bottles) + (1 if total_bottles % 1 > 0 else 0)
+    
+    return result
 
 def format_result(result):
-    """Форматирование результата для Telegram"""
+    """
+    Форматирование результата для Telegram
+    """
+    if 'error' in result:
+        return f"❌ {result['error']}"
     
-    drinks_names = {
-        'drk_champagne': '🥂 Шампанское',
-        'drk_wine_white': '🍷 Вино белое',
-        'drk_wine_red': '🍷 Вино красное',
-        'drk_whiskey': '🥃 Виски',
-        'drk_cognac': '🥃 Коньяк'
-    }
+    message = "🍾 <b>РЕЗУЛЬТАТ РАСЧЕТА</b> 🍾\n\n"
     
-    drinks_str = "\n".join([drinks_names.get(d, d) for d in result['drinks']])
+    message += "📊 <b>Параметры события:</b>\n"
+    message += f"• Всего гостей: {result['guests_total']}\n"
+    message += f"  └ Мужчин: {result['guests_male']}, Женщин: {result['guests_female']}\n"
+    message += f"• Длительность: {result['duration']}\n\n"
     
-    message = f"""
-🍾 <b>РЕЗУЛЬТАТ РАСЧЕТА</b> 🍾
-
-📊 <b>Параметры события:</b>
-• Гостей: {result['guests_total']}
-• Напитки: {drinks_str}
-• Длительность: {result['duration']}
-
-📦 <b>Необходимо алкоголя:</b>
-• Всего: <b>{result['liters']} литров</b>
-• Бутылок: <b>{result['bottles']} шт</b>
-• Мл на человека: <b>{result['total_ml'] // max(result['guests_total'], 1)} мл</b>
-
-💰 <b>Стоимость:</b>
-• Цена за литр: <b>{result['price_per_bottle']}₽</b>
-• Итого: <b>{result['total_cost']:,}₽</b>
-
-✅ Расчет готов!
-"""
+    message += "📦 <b>Необходимо алкоголя:</b>\n"
+    for drink in result['drinks_breakdown']:
+        message += f"• <b>{drink['name']}</b>: {drink['bottles_int']} бутылок ({drink['bottles']:.1f})\n"
+    
+    message += f"\n<b>ИТОГО: {result['total_bottles_int']} бутылок</b> ({result['total_bottles']:.1f})\n\n"
+    message += "✅ Расчет готов!"
+    
     return message
